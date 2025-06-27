@@ -69,7 +69,15 @@ class SimpleMultiHeadAttention:
 
 
 def causal_mask(L: int, S: int, dtype: mx.Dtype) -> mx.array:
-    pass
+    i = mx.arange(L)[:, None]         # shape (L, 1)
+    j = mx.arange(S)[None, :]         # shape (1, S)
+    mask = j > (i + (S - L))          # shape (L, S), bool
+
+    neg_inf = mx.full((), float('-inf'), dtype=dtype)  # scalar -inf
+    zero = mx.full((), 0.0, dtype=dtype)  # scalar 0.0
+
+    return mx.where(mask, neg_inf, zero).astype(dtype)
+
 
 
 def scaled_dot_product_attention_grouped(
@@ -79,7 +87,42 @@ def scaled_dot_product_attention_grouped(
     scale: float | None = None,
     mask: mx.array | str | None = None,
 ) -> mx.array:
-    pass
+    H_q = query.shape[-3]
+    H = key.shape[-3]
+    L = query.shape[-2]
+    S = key.shape[-2]
+    D = query.shape[-1]
+    n_repeats = H_q // H
+    print(f"n_repeats: {n_repeats}, H: {H}, L: {L}, S: {S}, D: {D}, H_q: {H_q}")
+    # query_shaped: (B, n_repeats, H, L, D)
+    query_shaped = query.reshape(
+        query.shape[:-3] + (H, n_repeats, L, D)
+    )
+    print(f"query_shaped: {query_shaped.shape}")
+    # Add 1 dimension to key and value at the 2nd place (after batch)
+    key_shaped = mx.expand_dims(key, axis=-3)
+    print(f"key_shaped: {key_shaped.shape}")
+    value_shaped = mx.expand_dims(value, axis=-3)
+    scale_factor = 1.0 / mx.sqrt(D) if scale is None else scale
+    attention_bias = mx.zeros(query.shape[:-3] + (H, n_repeats, L, S), dtype=query.dtype)
+    if mask == "causal":
+        # Create a causal mask for the attention scores
+        attention_bias = causal_mask(L, S, query.dtype)
+        # Expand dims to match query_shaped: (B, H, n_repeats, L, S)
+        # causal_mask is (L, S), need to add batch, H, n_repeats dims
+        expand_shape = (1,) * (query_shaped.ndim - 2) + (L, S)
+        attention_bias = attention_bias.reshape(expand_shape)
+    elif mask is not None:
+        attention_bias = mask.reshape(
+            mask.shape[:-3] + (H, n_repeats, L, S))
+    # B, H, L, D @ B, H, S, D -> B, H, L, S
+    attention_scores = query_shaped @ key_shaped.swapaxes(-1, -2) * scale_factor
+    attention_scores = attention_scores + attention_bias
+    attention_scores = softmax(attention_scores, axis=-1)
+    # B, H, L, S @ B, H, S, D -> B, H, L, D
+    output = attention_scores @ value_shaped
+    return output.reshape(query.shape)
+    
 
 
 def flash_attention(

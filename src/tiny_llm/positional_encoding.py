@@ -17,7 +17,7 @@ class RoPE:
         self.rope_init()
 
     def rope_init(self) :
-        theta = 1.0 / self.base ** (mx.arange(0, self.dims, 2, dtype=mx.float32)[: self.dims // 2] / self.dims)
+        theta = 1.0 / self.base ** (mx.arange(0, self.dims // 2, dtype=mx.float32)*2 / self.dims)
         seq_idx = mx.arange(self.seq_len, dtype=theta.dtype)
         idx_theta = mx.outer(seq_idx, theta)
         self.rope = mx.stack(

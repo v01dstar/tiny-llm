@@ -24,7 +24,25 @@ class Qwen2MultiHeadAttention:
         max_seq_len: int = 32768,
         theta: int = 1000000,
     ):
-        pass
+        self.wq = wq
+        self.wk = wk
+        self.wv = wv
+        self.wo = wo
+        self.bq = bq
+        self.bk = bk
+        self.bv = bv
+        self.E = hidden_size  # hidden size
+        self.H = num_heads  # number of attention heads
+        self.D = self.E // self.H  # dimension of each attention head
+        self.K = num_kv_heads  # number of key-value heads
+        self.max_seq_len = max_seq_len
+        self.theta = theta
+        self.rope = RoPE(
+            dims=self.D,
+            seq_len=self.max_seq_len,
+            base=self.theta,
+            traditional=False,
+        )
 
     def __call__(
         self,
@@ -32,7 +50,20 @@ class Qwen2MultiHeadAttention:
         offset: int,
         mask: mx.array | str | None = None,
     ) -> mx.array:
-        pass
+        q = linear(x, self.wq, self.bq)
+        k = linear(x, self.wk, self.bk)
+        v = linear(x, self.wv, self.bv)
+        L = q.shape[-3]  # Length of the query sequence
+        q = self.rope(q, offset=slice(offset, offset + L))
+        k = self.rope(k, offset=slice(offset, offset + L))
+        x = scaled_dot_product_attention_grouped(
+            query=q,
+            key=k,
+            value=v,
+            mask=mask,
+        )
+        x = linear(x, self.wo)
+        return x
 
 
 class Qwen2MLP:
