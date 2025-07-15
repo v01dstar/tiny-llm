@@ -93,15 +93,12 @@ def scaled_dot_product_attention_grouped(
     S = key.shape[-2]
     D = query.shape[-1]
     n_repeats = H_q // H
-    print(f"n_repeats: {n_repeats}, H: {H}, L: {L}, S: {S}, D: {D}, H_q: {H_q}")
     # query_shaped: (B, n_repeats, H, L, D)
     query_shaped = query.reshape(
         query.shape[:-3] + (H, n_repeats, L, D)
     )
-    print(f"query_shaped: {query_shaped.shape}")
     # Add 1 dimension to key and value at the 2nd place (after batch)
     key_shaped = mx.expand_dims(key, axis=-3)
-    print(f"key_shaped: {key_shaped.shape}")
     value_shaped = mx.expand_dims(value, axis=-3)
     scale_factor = 1.0 / mx.sqrt(D) if scale is None else scale
     attention_bias = mx.zeros(query.shape[:-3] + (H, n_repeats, L, S), dtype=query.dtype)
